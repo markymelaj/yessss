@@ -21,9 +21,12 @@ type CookieToSet = {
 }
 
 type LoginProfile = {
+  id?: string
   rol: 'admin' | 'auditor' | 'cliente'
   activo: boolean
   requiere_cambio_pass: boolean
+  identificador?: string | null
+  rut?: string | null
 }
 
 function applyCookies(response: NextResponse, cookiesToSet: CookieToSet[]) {
@@ -97,16 +100,29 @@ export async function POST(request: NextRequest) {
     }
   })
 
-  const { data: profileData, error: profileError } = await admin
+  let profile: LoginProfile | null = null
+
+  const { data: profileByIdentifier } = await admin
     .from('perfiles')
-    .select('rol, activo, requiere_cambio_pass')
-    .eq('id', data.user.id)
-    .single()
+    .select('id, rol, activo, requiere_cambio_pass, identificador, rut')
+    .or(`identificador.eq.${normalized},rut.eq.${normalized}`)
+    .maybeSingle()
 
-  const profile: LoginProfile | null =
-    (profileData as unknown as LoginProfile | null) ?? null
+  if (profileByIdentifier) {
+    profile = profileByIdentifier as unknown as LoginProfile
+  } else {
+    const { data: profileById } = await admin
+      .from('perfiles')
+      .select('id, rol, activo, requiere_cambio_pass, identificador, rut')
+      .eq('id', data.user.id)
+      .maybeSingle()
 
-  if (profileError || !profile) {
+    if (profileById) {
+      profile = profileById as unknown as LoginProfile
+    }
+  }
+
+  if (!profile) {
     return redirectWithCookies(request, '/login?error=profile', cookiesToSet)
   }
 
