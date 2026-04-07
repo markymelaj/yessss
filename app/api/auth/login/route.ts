@@ -2,21 +2,22 @@ import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/ssr'
 import { NextRequest, NextResponse } from 'next/server'
 
-import type { Database } from '@/lib/types'
 import { makeTechnicalEmail, normalizeIdentifier } from '@/lib/rut'
+
+type CookieOptions = {
+  domain?: string
+  expires?: Date
+  httpOnly?: boolean
+  maxAge?: number
+  path?: string
+  sameSite?: 'lax' | 'strict' | 'none'
+  secure?: boolean
+}
 
 type CookieToSet = {
   name: string
   value: string
-  options?: {
-    domain?: string
-    expires?: Date
-    httpOnly?: boolean
-    maxAge?: number
-    path?: string
-    sameSite?: 'lax' | 'strict' | 'none'
-    secure?: boolean
-  }
+  options?: CookieOptions
 }
 
 type LoginProfile = {
@@ -53,7 +54,6 @@ export async function POST(request: NextRequest) {
   const formData = await request.formData()
   const rawIdentifier = String(formData.get('identifier') ?? '').trim()
   const password = String(formData.get('password') ?? '')
-
   const normalized = normalizeIdentifier(rawIdentifier)
 
   if (!normalized || !password) {
@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
 
   const cookiesToSet: CookieToSet[] = []
 
-  const supabase = createServerClient<Database>(url, anonKey, {
+  const supabase = createServerClient(url, anonKey, {
     cookies: {
       getAll() {
         return request.cookies.getAll()
@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
     return redirectWithCookies(request, '/login?error=invalid', cookiesToSet)
   }
 
-  const admin = createClient<Database>(url, serviceRoleKey, {
+  const admin = createClient(url, serviceRoleKey, {
     auth: {
       autoRefreshToken: false,
       persistSession: false
@@ -103,7 +103,8 @@ export async function POST(request: NextRequest) {
     .eq('id', data.user.id)
     .single()
 
-  const profile = profileData as LoginProfile | null
+  const profile: LoginProfile | null =
+    (profileData as unknown as LoginProfile | null) ?? null
 
   if (profileError || !profile) {
     return redirectWithCookies(request, '/login?error=profile', cookiesToSet)
