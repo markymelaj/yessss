@@ -1,3 +1,4 @@
+import { createClient } from '@supabase/supabase-js';
 import { createServerClient } from '@supabase/ssr';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -64,14 +65,20 @@ export async function POST(request: NextRequest) {
     password
   });
 
-  if (error || !data.user) {
+  if (error || !data.user || !data.session) {
     return redirectWithCookies(request, '/login?error=invalid', cookiesToSet);
   }
 
-  // Usamos la sesión autenticada del propio usuario para leer su perfil.
-  // Esto funciona con RLS (la policy permite id = auth.uid()) y no requiere
-  // la SUPABASE_SERVICE_ROLE_KEY, eliminando un punto de falla en producción.
-  const { data: profileData } = await supabase
+  // Creamos un cliente temporal con el access_token recién obtenido.
+  // Esto es necesario porque el createServerClient lee auth desde las cookies
+  // del REQUEST (que aún no tienen la sesión nueva). Usar el token directamente
+  // garantiza que la consulta a perfiles pase el RLS (auth.uid() = id del usuario).
+  const authedClient = createClient<Database>(url, anonKey, {
+    global: { headers: { Authorization: `Bearer ${data.session.access_token}` } },
+    auth: { autoRefreshToken: false, persistSession: false }
+  });
+
+  const { data: profileData } = await authedClient
     .from('perfiles')
     .select('rol, activo, requiere_cambio_pass')
     .eq('id', data.user.id)
