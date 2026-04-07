@@ -2,7 +2,6 @@ import { createServerClient } from '@supabase/ssr';
 import { NextRequest, NextResponse } from 'next/server';
 
 import type { Database } from '@/lib/types';
-import { createAdminClient } from '@/lib/supabase/admin';
 import { makeTechnicalEmail, normalizeIdentifier } from '@/lib/rut';
 
 type CookieToSet = {
@@ -69,8 +68,10 @@ export async function POST(request: NextRequest) {
     return redirectWithCookies(request, '/login?error=invalid', cookiesToSet);
   }
 
-  const admin = createAdminClient();
-  const { data: profileData } = await admin
+  // Usamos la sesión autenticada del propio usuario para leer su perfil.
+  // Esto funciona con RLS (la policy permite id = auth.uid()) y no requiere
+  // la SUPABASE_SERVICE_ROLE_KEY, eliminando un punto de falla en producción.
+  const { data: profileData } = await supabase
     .from('perfiles')
     .select('rol, activo, requiere_cambio_pass')
     .eq('id', data.user.id)
