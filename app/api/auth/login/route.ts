@@ -8,19 +8,31 @@ import { makeTechnicalEmail, normalizeIdentifier } from '@/lib/rut'
 type CookieToSet = {
   name: string
   value: string
-  options?: Record<string, unknown>
+  options?: {
+    domain?: string
+    expires?: Date
+    httpOnly?: boolean
+    maxAge?: number
+    path?: string
+    sameSite?: 'lax' | 'strict' | 'none'
+    secure?: boolean
+  }
 }
 
-function applyCookies(
-  response: NextResponse,
-  cookiesToSet: CookieToSet[]
-) {
+type LoginProfile = {
+  rol: 'admin' | 'auditor' | 'cliente'
+  activo: boolean
+  requiere_cambio_pass: boolean
+}
+
+function applyCookies(response: NextResponse, cookiesToSet: CookieToSet[]) {
   cookiesToSet.forEach(({ name, value, options }) => {
     response.cookies.set(name, value, {
       path: '/',
       ...(options ?? {})
     })
   })
+
   response.headers.set('Cache-Control', 'no-store')
   return response
 }
@@ -33,6 +45,7 @@ function redirectWithCookies(
   const response = NextResponse.redirect(new URL(pathname, request.url), {
     status: 303
   })
+
   return applyCookies(response, cookiesToSet)
 }
 
@@ -84,11 +97,13 @@ export async function POST(request: NextRequest) {
     }
   })
 
-  const { data: profile, error: profileError } = await admin
+  const { data: profileData, error: profileError } = await admin
     .from('perfiles')
     .select('rol, activo, requiere_cambio_pass')
     .eq('id', data.user.id)
     .single()
+
+  const profile = profileData as LoginProfile | null
 
   if (profileError || !profile) {
     return redirectWithCookies(request, '/login?error=profile', cookiesToSet)
